@@ -125,10 +125,20 @@ func RenderSheetTable(data [][]string) string {
 	}
 
 	maxCols := 0
+	hasContent := false
 	for _, row := range data {
 		if len(row) > maxCols {
 			maxCols = len(row)
 		}
+		for _, cell := range row {
+			if strings.TrimSpace(cell) != "" {
+				hasContent = true
+			}
+		}
+	}
+
+	if !hasContent {
+		return ""
 	}
 
 	var lines []string

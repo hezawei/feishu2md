@@ -219,10 +219,55 @@ func (c *Client) GetSheetData(ctx context.Context, sheetToken string) ([][]strin
 	for _, row := range valuesResp.ValueRange.Values {
 		var strRow []string
 		for _, cell := range row {
-			strRow = append(strRow, fmt.Sprintf("%v", cell))
+			strRow = append(strRow, parseCellValue(cell))
 		}
 		rows = append(rows, strRow)
 	}
 
 	return rows, nil
+}
+
+func parseCellValue(cell interface{}) string {
+	if cell == nil {
+		return ""
+	}
+	switch v := cell.(type) {
+	case string:
+		return v
+	case float64:
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v))
+		}
+		return fmt.Sprintf("%v", v)
+	case int, int64:
+		return fmt.Sprintf("%v", v)
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case []interface{}:
+		var parts []string
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if text, exists := m["text"]; exists {
+					parts = append(parts, fmt.Sprintf("%v", text))
+				}
+			}
+		}
+		if len(parts) > 0 {
+			return strings.Join(parts, "")
+		}
+		return ""
+	case map[string]interface{}:
+		if text, exists := v["text"]; exists {
+			return fmt.Sprintf("%v", text)
+		}
+		if val, exists := v["value"]; exists {
+			return fmt.Sprintf("%v", val)
+		}
+		return ""
+	default:
+		return ""
+	}
 }
