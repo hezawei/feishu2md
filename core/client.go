@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/chyroc/lark"
@@ -175,4 +176,53 @@ func (c *Client) GetWikiNodeList(ctx context.Context, spaceID string, parentNode
 	}
 
 	return nodes, nil
+}
+
+func (c *Client) GetSheetData(ctx context.Context, sheetToken string) ([][]string, error) {
+	spreadsheetToken := sheetToken
+	embeddedSheetID := ""
+	if idx := strings.LastIndex(sheetToken, "_"); idx != -1 {
+		spreadsheetToken = sheetToken[:idx]
+		embeddedSheetID = sheetToken[idx+1:]
+	}
+
+	sheetsResp, _, err := c.larkClient.Drive.GetSheetList(ctx, &lark.GetSheetListReq{
+		SpreadSheetToken: spreadsheetToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(sheetsResp.Sheets) == 0 {
+		return nil, fmt.Errorf("no sheets found in spreadsheet")
+	}
+
+	targetSheetID := sheetsResp.Sheets[0].SheetID
+	if embeddedSheetID != "" {
+		for _, sheet := range sheetsResp.Sheets {
+			if strings.HasSuffix(sheet.SheetID, embeddedSheetID) {
+				targetSheetID = sheet.SheetID
+				break
+			}
+		}
+	}
+
+	valuesResp, _, err := c.larkClient.Drive.GetSheetValue(ctx, &lark.GetSheetValueReq{
+		SpreadSheetToken: spreadsheetToken,
+		Range:            targetSheetID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var rows [][]string
+	for _, row := range valuesResp.ValueRange.Values {
+		var strRow []string
+		for _, cell := range row {
+			strRow = append(strRow, fmt.Sprintf("%v", cell))
+		}
+		rows = append(rows, strRow)
+	}
+
+	return rows, nil
 }

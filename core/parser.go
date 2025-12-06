@@ -10,9 +10,15 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+type SheetToken struct {
+	Token      string
+	PrevTextID string
+}
+
 type Parser struct {
 	useHTMLTags bool
 	ImgTokens   []string
+	SheetTokens []SheetToken
 	blockMap    map[string]*lark.DocxBlock
 }
 
@@ -20,6 +26,7 @@ func NewParser(config OutputConfig) *Parser {
 	return &Parser{
 		useHTMLTags: config.UseHTMLTags,
 		ImgTokens:   make([]string, 0),
+		SheetTokens: make([]SheetToken, 0),
 		blockMap:    make(map[string]*lark.DocxBlock),
 	}
 }
@@ -112,6 +119,42 @@ func renderMarkdownTable(data [][]string) string {
 	return builder.String()
 }
 
+func RenderSheetTable(data [][]string) string {
+	if len(data) == 0 {
+		return ""
+	}
+
+	maxCols := 0
+	for _, row := range data {
+		if len(row) > maxCols {
+			maxCols = len(row)
+		}
+	}
+
+	var lines []string
+	for i, row := range data {
+		for len(row) < maxCols {
+			row = append(row, "")
+		}
+		var cells []string
+		for _, cell := range row {
+			cell = strings.ReplaceAll(cell, "\n", "<br/>")
+			cell = strings.ReplaceAll(cell, "|", "\\|")
+			cells = append(cells, cell)
+		}
+		lines = append(lines, "| "+strings.Join(cells, " | ")+" |")
+		if i == 0 {
+			var sep []string
+			for range cells {
+				sep = append(sep, "---")
+			}
+			lines = append(lines, "| "+strings.Join(sep, " | ")+" |")
+		}
+	}
+
+	return strings.Join(lines, "\n") + "\n"
+}
+
 // =============================================================
 // Parse the new version of document (docx)
 // =============================================================
@@ -187,6 +230,8 @@ func (p *Parser) ParseDocxBlock(b *lark.DocxBlock, indentLevel int) string {
 		buf.WriteString(p.ParseDocxBlockQuoteContainer(b))
 	case lark.DocxBlockTypeGrid:
 		buf.WriteString(p.ParseDocxBlockGrid(b, indentLevel))
+	case lark.DocxBlockTypeSheet:
+		buf.WriteString(p.ParseDocxBlockSheet(b))
 	default:
 	}
 	return buf.String()
@@ -495,4 +540,30 @@ func (p *Parser) ParseDocxBlockGrid(b *lark.DocxBlock, indentLevel int) string {
 	}
 
 	return buf.String()
+}
+
+func (p *Parser) ParseDocxBlockSheet(b *lark.DocxBlock) string {
+	if b.Sheet == nil || b.Sheet.Token == "" {
+		return ""
+	}
+
+	prevTextID := ""
+	if parent, ok := p.blockMap[b.ParentID]; ok {
+		for i, childID := range parent.Children {
+			if childID == b.BlockID && i > 0 {
+				prevBlock := p.blockMap[parent.Children[i-1]]
+				if prevBlock.BlockType == lark.DocxBlockTypeText {
+					prevTextID = prevBlock.BlockID
+				}
+				break
+			}
+		}
+	}
+
+	p.SheetTokens = append(p.SheetTokens, SheetToken{
+		Token:      b.Sheet.Token,
+		PrevTextID: prevTextID,
+	})
+
+	return fmt.Sprintf("{{SHEET:%s}}\n", b.Sheet.Token)
 }

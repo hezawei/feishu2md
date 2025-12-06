@@ -70,6 +70,17 @@ func downloadDocument(ctx context.Context, client *core.Client, url string, opts
 		}
 	}
 
+	for _, sheetToken := range parser.SheetTokens {
+		sheetData, err := client.GetSheetData(ctx, sheetToken.Token)
+		if err != nil {
+			fmt.Printf("Warning: failed to get sheet data for %s: %v\n", sheetToken.Token, err)
+			markdown = strings.Replace(markdown, fmt.Sprintf("{{SHEET:%s}}\n", sheetToken.Token), "", 1)
+			continue
+		}
+		sheetTable := core.RenderSheetTable(sheetData)
+		markdown = strings.Replace(markdown, fmt.Sprintf("{{SHEET:%s}}\n", sheetToken.Token), sheetTable, 1)
+	}
+
 	// Format the markdown document
 	engine := lute.New(func(l *lute.Lute) {
 		l.RenderOptions.AutoSpace = true
